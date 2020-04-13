@@ -6,23 +6,16 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.event.ActionEvent;
-import javafx.event.EventHandler;
 import javafx.geometry.Insets;
-import javafx.geometry.Pos;
 import javafx.scene.Group;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.Font;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
-import javafx.stage.WindowEvent;
-import javafx.util.Callback;
 
 import java.io.File;
 import java.io.IOException;
@@ -46,6 +39,9 @@ public class App extends Application {
     private DatePicker endDatePicker = new DatePicker();
 
     private ObservableList<Item> data = FXCollections.observableArrayList();
+    private HashMap<String, Integer> compAndPosMap = new HashMap<>();
+    // 若合并过公司，则将它置为true
+    private boolean dataChanged = false;
 
     @Override
     public void start(Stage stage) {
@@ -112,7 +108,13 @@ public class App extends Application {
         showListButton.setFont(new Font(20));
         showListButton.setOnAction(arg0 -> {
             try {
-                changeItemList();
+                if (dataChanged) {
+                    if (showConfirmDialog("数据已经修改过，若重新导入数据，修改将作废，是否继续")) {
+                        importDataFromExcel();
+                    }
+                } else {
+                    importDataFromExcel();
+                }
                 countNameLabel.setText("货物总数:" + data.size());
             } catch (Exception e) {
                 showErrorDialog("错误", "出现错误" + e.getMessage());
@@ -122,30 +124,35 @@ public class App extends Application {
         Button editListButton = new Button("编辑列表");
         editListButton.setFont(new Font(20));
         editListButton.setOnAction(arg0 -> {
+
+            HashSet<String> set = new HashSet<>();
+            for (Item item : data) {
+                set.add(item.getCompany());
+            }
+
             // 创建新的stage
             Stage editStage = new Stage();
-            GridPane editGridPane = new GridPane();
-            ListView<Item> companyList = new ListView<>();
-            companyList.setPrefSize(700, 600);
-            companyList.setEditable(true);
-            companyList.setCellFactory(itemListView -> {
-                ListCell<Item> cell = new ListCell<Item>() {
-                    @Override
-                    public void updateItem(Item item, boolean empty) {
-                        HBox hBox = new HBox();
-                        hBox.setSpacing(20);
-                        if (!empty) {
-                            Label companyLabel = new Label(item.getCompany());
-                            companyLabel.setFont(new Font(20));
-                            hBox.getChildren().addAll(companyLabel);
-                            setGraphic(hBox);
-                        }
-                    }
-                };
-                return cell;
+
+            VBox vBox = new VBox();
+
+            ObservableList<String> companyList = FXCollections.observableArrayList();
+            companyList.addAll(compAndPosMap.keySet());
+            ComboBox<String> beforeCombo = new ComboBox<>(companyList);
+            beforeCombo.setPadding(new Insets(5));
+            Label label = new Label("合并到");
+            label.setFont(new Font(30));
+            ComboBox<String> afterCombo = new ComboBox<>(companyList);
+            Button mergeButton = new Button("合并");
+            mergeButton.setFont(new Font(30));
+            mergeButton.setOnAction(actionEvent -> {
+                String beforeComp = beforeCombo.getValue();
+                String afterComp = afterCombo.getValue();
+                mergeCompany(beforeComp, afterComp, companyList);
+                showSuccessDialog("合并成功", beforeComp + " 已合并到 " + afterComp);
             });
-            editGridPane.add(companyList, 0,0);
-            editStage.setScene(new Scene(editGridPane, 700, 800));
+            vBox.getChildren().addAll(beforeCombo, label, afterCombo, mergeButton);
+
+            editStage.setScene(new Scene(vBox, 700, 800));
             editStage.show();
         });
 
@@ -191,7 +198,7 @@ public class App extends Application {
                 ExcelUtil.backupFile(myReportPath.toString());
                 ExcelUtil.persistDataToExcel(myReportPath.toString(), tempList);
 //                boolean b = ExcelUtil.deleteFile(backupFilePath);
-                showSuccessDialog("写入成功","写入成功，备份文件未删除");
+                showSuccessDialog("写入成功", "写入成功，备份文件未删除");
             } catch (IOException e) {
                 showErrorDialog("写入错误", "写入错误，原文件已备份" + e.getLocalizedMessage());
             }
@@ -240,6 +247,29 @@ public class App extends Application {
         stage.show();
     }
 
+    private boolean showConfirmDialog(String content) {
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        alert.setTitle("请确认");
+        alert.setContentText(content);
+
+        Optional<ButtonType> result = alert.showAndWait();
+        return result.isPresent() && result.get() == ButtonType.OK;
+    }
+
+    private void mergeCompany(String beforeComp, String afterComp, ObservableList<String> comp) {
+        Integer pos = compAndPosMap.get(beforeComp);
+        while (data.get(pos).getCompany().equals(beforeComp)) {
+            Item item = data.get(pos);
+            item.setCompany(afterComp);
+            pos++;
+        }
+        compAndPosMap.remove(beforeComp);
+        dataChanged = true;
+        data.add(data.size(), new Item());
+        data.remove(data.size()-1);
+        comp.remove(beforeComp);
+    }
+
     private void showErrorDialog(String header, String content) {
         Alert alert = new Alert(Alert.AlertType.WARNING);
         alert.setTitle("错误");
@@ -258,7 +288,7 @@ public class App extends Application {
         alert.showAndWait();
     }
 
-    private void changeItemList() throws IOException, GeneralSecurityException {
+    private void importDataFromExcel() throws IOException, GeneralSecurityException {
         data.removeIf(item -> true);
         data.addAll(
                 ExcelUtil.getReportContent(todayReportPath.toString(),
@@ -266,6 +296,13 @@ public class App extends Application {
                         getDateFromLocalDate(endDatePicker.getValue().plusDays(1))
                 )
         );
+
+        // 记录所有公司名和第一个出现的位置（可以看作data中的数据都是按公司分组的）
+        for (int i = data.size() - 1; i >= 0; i--) {
+            compAndPosMap.put(data.get(i).getCompany(), i);
+        }
+
+        dataChanged = false;
     }
 
     private void changeReportPath(String absolutePath) {
