@@ -16,6 +16,7 @@ import javafx.scene.layout.VBox;
 import javafx.scene.text.Font;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
+import javafx.util.Callback;
 
 import java.io.File;
 import java.io.IOException;
@@ -125,23 +126,33 @@ public class App extends Application {
         editListButton.setFont(new Font(20));
         editListButton.setOnAction(arg0 -> {
 
-            HashSet<String> set = new HashSet<>();
-            for (Item item : data) {
-                set.add(item.getCompany());
-            }
-
-            // 创建新的stage
-            Stage editStage = new Stage();
-
-            VBox vBox = new VBox();
-
             ObservableList<String> companyList = FXCollections.observableArrayList();
             companyList.addAll(compAndPosMap.keySet());
+
+            Callback<ListView<String>, ListCell<String>> comboStyleCallback = new Callback<>() {
+                @Override
+                public ListCell<String> call(ListView<String> stringListView) {
+                    ListCell<String> cell = new ListCell<>() {
+                        @Override
+                        protected void updateItem(String s, boolean b) {
+                            super.updateItem(s, b);
+                            setText(s);
+                            setEditable(false);
+                        }
+                    };
+                    cell.setFont(new Font(20));
+                    return cell;
+                }
+            };
+
             ComboBox<String> beforeCombo = new ComboBox<>(companyList);
+
+            beforeCombo.setCellFactory(comboStyleCallback);
             beforeCombo.setPadding(new Insets(5));
             Label label = new Label("合并到");
             label.setFont(new Font(30));
             ComboBox<String> afterCombo = new ComboBox<>(companyList);
+            afterCombo.setCellFactory(comboStyleCallback);
             Button mergeButton = new Button("合并");
             mergeButton.setFont(new Font(30));
             mergeButton.setOnAction(actionEvent -> {
@@ -150,9 +161,13 @@ public class App extends Application {
                 mergeCompany(beforeComp, afterComp, companyList);
                 showSuccessDialog("合并成功", beforeComp + " 已合并到 " + afterComp);
             });
+
+            // 创建新的stage
+            Stage editStage = new Stage();
+            VBox vBox = new VBox();
             vBox.getChildren().addAll(beforeCombo, label, afterCombo, mergeButton);
 
-            editStage.setScene(new Scene(vBox, 700, 800));
+            editStage.setScene(new Scene(vBox, 300, 200));
             editStage.show();
         });
 
