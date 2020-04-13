@@ -93,7 +93,7 @@ public class ExcelUtil {
 
                 while (sheetIterator.hasNext()) {
                     Sheet next = sheetIterator.next();
-                    items.add(next.getSheetName());
+                    items.add(next.getSheetName().trim());
                 }
 
                 return items;
