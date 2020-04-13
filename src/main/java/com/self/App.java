@@ -7,6 +7,7 @@ import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Group;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
@@ -40,7 +41,7 @@ public class App extends Application {
     private DatePicker endDatePicker = new DatePicker();
 
     private ObservableList<Item> data = FXCollections.observableArrayList();
-    private HashMap<String, Integer> compAndPosMap = new HashMap<>();
+    private HashMap<String, ArrayList<Integer>> compAndPosMap = new HashMap<>();
     // 若合并过公司，则将它置为true
     private boolean dataChanged = false;
 
@@ -146,20 +147,25 @@ public class App extends Application {
             };
 
             ComboBox<String> beforeCombo = new ComboBox<>(companyList);
-
             beforeCombo.setCellFactory(comboStyleCallback);
             beforeCombo.setPadding(new Insets(5));
+
             Label label = new Label("合并到");
             label.setFont(new Font(30));
+
             ComboBox<String> afterCombo = new ComboBox<>(companyList);
             afterCombo.setCellFactory(comboStyleCallback);
+            afterCombo.setPadding(new Insets(5));
+
             Button mergeButton = new Button("合并");
             mergeButton.setFont(new Font(30));
             mergeButton.setOnAction(actionEvent -> {
                 String beforeComp = beforeCombo.getValue();
                 String afterComp = afterCombo.getValue();
-                mergeCompany(beforeComp, afterComp, companyList);
-                showSuccessDialog("合并成功", beforeComp + " 已合并到 " + afterComp);
+                if (beforeCombo != null && afterCombo != null) {
+                    mergeCompany(beforeComp, afterComp, companyList);
+                    showSuccessDialog("合并成功", beforeComp + " 已合并到 " + afterComp);
+                }
             });
 
             // 创建新的stage
@@ -172,32 +178,39 @@ public class App extends Application {
         });
 
         ListView<Item> listView = new ListView<>(data);
-        listView.setPrefSize(700, 600);
+        listView.setPrefSize(900, 600);
         listView.setEditable(false);
         listView.setCellFactory(itemListView -> {
-            ListCell<Item> cell = new ListCell<Item>() {
+            return new ListCell<Item>() {
                 @Override
                 public void updateItem(Item item, boolean empty) {
                     HBox hBox = new HBox();
                     hBox.setSpacing(20);
+                    hBox.setAlignment(Pos.CENTER_LEFT);
                     if (!empty) {
+                        int prefWidth = 200;
                         Label itemNameLabel = new Label(item.getName());
                         itemNameLabel.setFont(new Font(20));
+                        itemNameLabel.setPrefWidth(prefWidth);
                         Label itemSpecLabel = new Label(item.getSpec());
                         itemSpecLabel.setFont(new Font(20));
+                        itemSpecLabel.setPrefWidth(150);
                         Label itemToStorageLabel = new Label("" + item.getToStorage());
                         itemToStorageLabel.setFont(new Font(20));
+                        itemToStorageLabel.setPrefWidth(100);
                         Label itemInDateLabel = new Label("" + item.getInDate(true));
                         itemInDateLabel.setFont(new Font(20));
+                        itemInDateLabel.setPrefWidth(100);
                         Label companyLabel = new Label(item.getCompany());
                         companyLabel.setFont(new Font(20));
+                        companyLabel.setPrefWidth(300);
+
                         hBox.getChildren().addAll(itemNameLabel, itemSpecLabel,
                                 itemToStorageLabel, itemInDateLabel, companyLabel);
                         setGraphic(hBox);
                     }
                 }
             };
-            return cell;
         });
 
         countNameLabel.setFont(new Font(20));
@@ -253,7 +266,7 @@ public class App extends Application {
 
         Scene scene = new Scene(group);
         stage.setScene(scene);
-        stage.setMinWidth(725);
+        stage.setMinWidth(900);
         stage.setMinHeight(900);
 
         // 退出时关闭所有窗口
@@ -271,18 +284,20 @@ public class App extends Application {
         return result.isPresent() && result.get() == ButtonType.OK;
     }
 
-    private void mergeCompany(String beforeComp, String afterComp, ObservableList<String> comp) {
-        Integer pos = compAndPosMap.get(beforeComp);
-        while (data.get(pos).getCompany().equals(beforeComp)) {
-            Item item = data.get(pos);
-            item.setCompany(afterComp);
-            pos++;
+    private boolean mergeCompany(String beforeComp, String afterComp, ObservableList<String> comp) {
+        if (beforeComp == null || afterComp == null) {
+            return false;
+        }
+        ArrayList<Integer> posList = compAndPosMap.get(beforeComp);
+        for (int pos : posList) {
+            data.get(pos).setCompany(afterComp);
         }
         compAndPosMap.remove(beforeComp);
         dataChanged = true;
         data.add(data.size(), new Item());
-        data.remove(data.size()-1);
+        data.remove(data.size() - 1);
         comp.remove(beforeComp);
+        return true;
     }
 
     private void showErrorDialog(String header, String content) {
@@ -312,9 +327,10 @@ public class App extends Application {
                 )
         );
 
-        // 记录所有公司名和第一个出现的位置（可以看作data中的数据都是按公司分组的）
+        // 记录所有公司名和相应记录位置
         for (int i = data.size() - 1; i >= 0; i--) {
-            compAndPosMap.put(data.get(i).getCompany(), i);
+            ArrayList<Integer> integers = compAndPosMap.computeIfAbsent(data.get(i).getCompany(), k -> new ArrayList<>());
+            integers.add(i);
         }
 
         dataChanged = false;
