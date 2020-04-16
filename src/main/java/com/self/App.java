@@ -13,11 +13,9 @@ import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
 import javafx.scene.text.Font;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
-import javafx.util.Callback;
 
 import java.io.File;
 import java.io.IOException;
@@ -123,59 +121,59 @@ public class App extends Application {
             }
         });
 
-        Button editListButton = new Button("编辑列表");
-        editListButton.setFont(new Font(20));
-        editListButton.setOnAction(arg0 -> {
-
-            ObservableList<String> companyList = FXCollections.observableArrayList();
-            companyList.addAll(compAndPosMap.keySet());
-
-            Callback<ListView<String>, ListCell<String>> comboStyleCallback = new Callback<>() {
-                @Override
-                public ListCell<String> call(ListView<String> stringListView) {
-                    ListCell<String> cell = new ListCell<>() {
-                        @Override
-                        protected void updateItem(String s, boolean b) {
-                            super.updateItem(s, b);
-                            setText(s);
-                            setEditable(false);
-                        }
-                    };
-                    cell.setFont(new Font(20));
-                    return cell;
-                }
-            };
-
-            ComboBox<String> beforeCombo = new ComboBox<>(companyList);
-            beforeCombo.setCellFactory(comboStyleCallback);
-            beforeCombo.setPadding(new Insets(5));
-
-            Label label = new Label("合并到");
-            label.setFont(new Font(30));
-
-            ComboBox<String> afterCombo = new ComboBox<>(companyList);
-            afterCombo.setCellFactory(comboStyleCallback);
-            afterCombo.setPadding(new Insets(5));
-
-            Button mergeButton = new Button("合并");
-            mergeButton.setFont(new Font(30));
-            mergeButton.setOnAction(actionEvent -> {
-                String beforeComp = beforeCombo.getValue();
-                String afterComp = afterCombo.getValue();
-                if (beforeCombo != null && afterCombo != null) {
-                    mergeCompany(beforeComp, afterComp, companyList);
-                    showSuccessDialog("合并成功", beforeComp + " 已合并到 " + afterComp);
-                }
-            });
-
-            // 创建新的stage
-            Stage editStage = new Stage();
-            VBox vBox = new VBox();
-            vBox.getChildren().addAll(beforeCombo, label, afterCombo, mergeButton);
-
-            editStage.setScene(new Scene(vBox, 300, 200));
-            editStage.show();
-        });
+//        Button editListButton = new Button("编辑列表");
+//        editListButton.setFont(new Font(20));
+//        editListButton.setOnAction(arg0 -> {
+//
+//            ObservableList<String> companyList = FXCollections.observableArrayList();
+//            companyList.addAll(compAndPosMap.keySet());
+//
+//            Callback<ListView<String>, ListCell<String>> comboStyleCallback = new Callback<>() {
+//                @Override
+//                public ListCell<String> call(ListView<String> stringListView) {
+//                    ListCell<String> cell = new ListCell<>() {
+//                        @Override
+//                        protected void updateItem(String s, boolean b) {
+//                            super.updateItem(s, b);
+//                            setText(s);
+//                            setEditable(false);
+//                        }
+//                    };
+//                    cell.setFont(new Font(20));
+//                    return cell;
+//                }
+//            };
+//
+//            ComboBox<String> beforeCombo = new ComboBox<>(companyList);
+//            beforeCombo.setCellFactory(comboStyleCallback);
+//            beforeCombo.setPadding(new Insets(5));
+//
+//            Label label = new Label("合并到");
+//            label.setFont(new Font(30));
+//
+//            ComboBox<String> afterCombo = new ComboBox<>(companyList);
+//            afterCombo.setCellFactory(comboStyleCallback);
+//            afterCombo.setPadding(new Insets(5));
+//
+//            Button mergeButton = new Button("合并");
+//            mergeButton.setFont(new Font(30));
+//            mergeButton.setOnAction(actionEvent -> {
+//                String beforeComp = beforeCombo.getValue();
+//                String afterComp = afterCombo.getValue();
+//                if (beforeCombo != null && afterCombo != null) {
+//                    showMergeCompany(beforeComp, afterComp, companyList);
+//                    showSuccessDialog("合并成功", beforeComp + " 已合并到 " + afterComp);
+//                }
+//            });
+//
+//            // 创建新的stage
+//            Stage editStage = new Stage();
+//            VBox vBox = new VBox();
+//            vBox.getChildren().addAll(beforeCombo, label, afterCombo, mergeButton);
+//
+//            editStage.setScene(new Scene(vBox, 300, 200));
+//            editStage.show();
+//        });
 
         ListView<Item> listView = new ListView<>(data);
         listView.setPrefSize(900, 600);
@@ -222,14 +220,21 @@ public class App extends Application {
         addButton.setText("加入我的档案");
         final ObservableList<Item> tempList = data;
         addButton.setOnAction(event -> {
+
+            ArrayList<Item> differenceInCompanies = null;
             try {
-                ExcelUtil.backupFile(myReportPath.toString());
-                ExcelUtil.persistDataToExcel(myReportPath.toString(), tempList);
-//                boolean b = ExcelUtil.deleteFile(backupFilePath);
-                showSuccessDialog("写入成功", "写入成功，备份文件未删除");
-            } catch (IOException e) {
-                showErrorDialog("写入错误", "写入错误，原文件已备份" + e.getLocalizedMessage());
+                differenceInCompanies = ExcelUtil.getDifferenceInCompanies(myReportPath.toString(), tempList);
+
+                if(differenceInCompanies.size() == 0){
+                    showMergeCompanyWindow(differenceInCompanies);
+                }
+
+            } catch (IOException | GeneralSecurityException e) {
+                showErrorDialog("打开报表失败", "打开报表失败，请尝试重新打开报表");
             }
+
+
+            persistData(tempList);
         });
 
         GridPane gridPane = new GridPane();
@@ -251,7 +256,7 @@ public class App extends Application {
         gridPane.add(endLabel, 0, 3);
         gridPane.add(endDatePicker, 1, 3);
 
-        gridPane.add(editListButton, 1, 4);
+//        gridPane.add(editListButton, 1, 4);
         gridPane.add(showListButton, 2, 4);
 
         gridPane.add(listView, 0, 5, 3, 1);
@@ -275,6 +280,23 @@ public class App extends Application {
         stage.show();
     }
 
+    private void showMergeCompanyWindow(ArrayList<Item> differenceInCompanies) throws IOException, GeneralSecurityException {
+        List<String> targetCompanyList = ExcelUtil.getCompanyList(myReportPath.toString());
+
+
+    }
+
+    private void persistData(ObservableList<Item> todayReportList) {
+        try {
+            ExcelUtil.backupFile(myReportPath.toString());
+
+            ExcelUtil.persistDataToExcel(myReportPath.toString(), todayReportList);
+            showSuccessDialog("写入成功", "写入成功，备份文件未删除");
+        } catch (IOException e) {
+            showErrorDialog("写入错误", "写入错误，原文件已备份" + e.getLocalizedMessage());
+        }
+    }
+
     private boolean showConfirmDialog(String content) {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
         alert.setTitle("请确认");
@@ -284,21 +306,21 @@ public class App extends Application {
         return result.isPresent() && result.get() == ButtonType.OK;
     }
 
-    private boolean mergeCompany(String beforeComp, String afterComp, ObservableList<String> comp) {
-        if (beforeComp == null || afterComp == null) {
-            return false;
-        }
-        ArrayList<Integer> posList = compAndPosMap.get(beforeComp);
-        for (int pos : posList) {
-            data.get(pos).setCompany(afterComp);
-        }
-        compAndPosMap.remove(beforeComp);
-        dataChanged = true;
-        data.add(data.size(), new Item());
-        data.remove(data.size() - 1);
-        comp.remove(beforeComp);
-        return true;
-    }
+//    private boolean showMergeCompany(String beforeComp, String afterComp, ObservableList<String> comp) {
+//        if (beforeComp == null || afterComp == null) {
+//            return false;
+//        }
+//        ArrayList<Integer> posList = compAndPosMap.get(beforeComp);
+//        for (int pos : posList) {
+//            data.get(pos).setCompany(afterComp);
+//        }
+//        compAndPosMap.remove(beforeComp);
+//        dataChanged = true;
+//        data.add(data.size(), new Item());
+//        data.remove(data.size() - 1);
+//        comp.remove(beforeComp);
+//        return true;
+//    }
 
     private void showErrorDialog(String header, String content) {
         Alert alert = new Alert(Alert.AlertType.WARNING);

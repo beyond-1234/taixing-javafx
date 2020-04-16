@@ -48,6 +48,28 @@ public class ExcelUtil {
     }
 
     /**
+     * get different companies between report and document file
+     * @param path
+     * @param items
+     * @throws IOException
+     */
+    public static ArrayList<Item> getDifferenceInCompanies(String path, ObservableList<Item> items) throws IOException {
+        try (Workbook workBook = getWorkBook(path)) {
+            ArrayList<Item> diff = new ArrayList<>();
+            for (Item item : items) {
+                if (item.getCompany() != null && !item.getCompany().trim().equals("")) {
+                    Sheet sheetAt = workBook.getSheet(item.getCompany());
+
+                    if (sheetAt == null) {
+                        diff.add(item);
+                    }
+                }
+            }
+            return diff;
+        }
+    }
+
+    /**
      * if there's no corresponding company name on my report
      * generate a new sheet for the company
      * @param workBook
