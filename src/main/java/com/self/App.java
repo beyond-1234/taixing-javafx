@@ -8,6 +8,8 @@ import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.event.ActionEvent;
+import javafx.event.EventHandler;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Group;
@@ -28,6 +30,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.*;
+import java.util.function.Consumer;
 
 /**
  * JavaFX App
@@ -41,6 +44,7 @@ public class App extends Application {
 
     private DatePicker startDatePicker = new DatePicker();
     private DatePicker endDatePicker = new DatePicker();
+    private ListView<Item> listView = null;
 
 //    private ObservableList<Item> data = FXCollections.observableArrayList();
 //    private HashMap<String, ArrayList<Integer>> compAndPosMap = new HashMap<>();
@@ -165,7 +169,7 @@ public class App extends Application {
 //            editStage.show();
 //        });
 
-        ListView<Item> listView = new ListView<>();
+        listView = new ListView<>();
         listView.setPrefSize(900, 600);
         listView.setEditable(false);
         listView.setCellFactory(itemListView -> {
@@ -208,7 +212,7 @@ public class App extends Application {
         showListButton.setOnAction(arg0 -> {
             try {
                 importDataFromExcel();
-                ObservableList<Item> tempList = generateTempList();
+                ObservableList<Item> tempList = generateTempListFromMap();
                 listView.setItems(tempList);
                 countNameLabel.setText("货物总数:" + tempList.size());
             } catch (Exception e) {
@@ -224,15 +228,14 @@ public class App extends Application {
         addButton.setText("加入我的档案");
 //        final ObservableList<Item> tempList = generateTempList(data);
         addButton.setOnAction(event -> {
-            ObservableList<Item> tempList = generateTempList();
+            ObservableList<Item> tempList = generateTempListFromMap();
             ArrayList<String> differenceInCompanies = null;
             try {
                 differenceInCompanies = ExcelUtil.getDifferenceInCompanies(myReportPath.toString(), data.keySet());
-                System.out.println(differenceInCompanies.size());
                 if (differenceInCompanies.size() != 0) {
                     showMergeCompanyWindow(differenceInCompanies);
                 } else {
-                    persistData(tempList);
+                    persistData();
                 }
 
             } catch (IOException | GeneralSecurityException e) {
@@ -284,7 +287,7 @@ public class App extends Application {
         stage.show();
     }
 
-    private ObservableList<Item> generateTempList() {
+    private ObservableList<Item> generateTempListFromMap() {
         ObservableList list = FXCollections.observableArrayList();
         for (Map.Entry<String, List<Item>> e :
                 data.entrySet()) {
@@ -295,11 +298,14 @@ public class App extends Application {
 
     private void showMergeCompanyWindow(ArrayList<String> differenceInCompanies) throws IOException, GeneralSecurityException {
         ObservableList<String> targetCompanyList = FXCollections.observableList(ExcelUtil.getCompanyList(myReportPath.toString()));
-        System.out.println(targetCompanyList.size());
-        System.out.println(differenceInCompanies.size());
+
+        Stage editStage = new Stage();
+        editStage.setTitle("发现找不到表的公司，改正一下吧");
+
         VBox vBox = new VBox();
         vBox.setAlignment(Pos.CENTER_LEFT);
 
+        ArrayList<String> changeList = new ArrayList<>(differenceInCompanies);
 
         ListView<String> diffListView = new ListView<>(FXCollections.observableList(differenceInCompanies));
         diffListView.setPrefSize(900, 600);
@@ -307,15 +313,16 @@ public class App extends Application {
         diffListView.setCellFactory(new Callback<ListView<String>, ListCell<String>>() {
             @Override
             public ListCell<String> call(ListView<String> stringListView) {
+
                 ListCell<String> cell = new ListCell<>(){
                     @Override
                     protected void updateItem(String item, boolean empty) {
                         super.updateItem(item, empty);
+                        int index = differenceInCompanies.indexOf(item);
                         HBox hBox = new HBox();
                         hBox.setSpacing(20);
                         hBox.setAlignment(Pos.CENTER_LEFT);
                         if (!empty) {
-
                             Label companyLabel = new Label(item);
                             companyLabel.setFont(new Font(20));
                             companyLabel.setPrefWidth(300);
@@ -333,12 +340,17 @@ public class App extends Application {
                                 cell.setFont(new Font(20));
                                 return cell;
                             });
-
-
+                            afterCombo.setPadding(new Insets(5));
+                            afterCombo.valueProperty().addListener(new ChangeListener<String>() {
+                                @Override
+                                public void changed(ObservableValue<? extends String> observableValue, String s, String t1) {
+                                    changeList.set(index, t1);
+                                    System.out.println(index);
+                                }
+                            });
                             hBox.getChildren().addAll(companyLabel, afterCombo);
                             setGraphic(hBox);
                         }
-
                     }
                 };
                 cell.setFont(new Font(20));
@@ -371,21 +383,33 @@ public class App extends Application {
 
         Button confirmButton = new Button("确定");
         confirmButton.setFont(new Font(20));
+        confirmButton.setOnAction(new EventHandler<ActionEvent>() {
+            @Override
+            public void handle(ActionEvent actionEvent) {
+                for (int i = 0; i < changeList.size(); i++) {
+                    mergeCompany(differenceInCompanies.get(i), changeList.get(i));
+                }
+                // 更新主界面上的数据
+                listView.setItems(generateTempListFromMap());
+                // 将数据添加到excel
+                persistData();
+                editStage.close();
+            }
+        });
 
         vBox.getChildren().add(0, diffListView);
-//        vBox.getChildren().add(1,afterCombo);
         vBox.getChildren().add(1, confirmButton);
 
-        Stage editStage = new Stage();
         editStage.setScene(new Scene(vBox, 900, 600));
         editStage.show();
     }
 
 
-    private void persistData(ObservableList<Item> todayReportList) {
+    private void persistData() {
         try {
+            ObservableList<Item> items = generateTempListFromMap();
             ExcelUtil.backupFile(myReportPath.toString());
-            ExcelUtil.persistDataToExcel(myReportPath.toString(), todayReportList);
+            ExcelUtil.persistDataToExcel(myReportPath.toString(), items);
             showSuccessDialog("写入成功", "写入成功，备份文件未删除");
         } catch (IOException e) {
             showErrorDialog("写入错误", "写入错误，原文件已备份" + e.getLocalizedMessage());
@@ -401,8 +425,12 @@ public class App extends Application {
         return result.isPresent() && result.get() == ButtonType.OK;
     }
 
-    private void mergeCompany(String beforeComp, String afterComp, ObservableList<String> comp) {
+    private void mergeCompany(String beforeComp, String afterComp) {
+        System.out.println(afterComp);
         List<Item> before = data.get(beforeComp);
+        before.forEach(item -> {
+            item.setCompany(afterComp);
+        });
         List<Item> after = data.get(afterComp);
         if (after == null) {
             data.put(afterComp, before);
