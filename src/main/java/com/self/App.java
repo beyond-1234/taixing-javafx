@@ -4,6 +4,8 @@ import com.self.model.Item;
 import com.self.util.ExcelUtil;
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.beans.value.ChangeListener;
+import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
@@ -13,9 +15,11 @@ import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
 import javafx.scene.text.Font;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
+import javafx.util.Callback;
 
 import java.io.File;
 import java.io.IOException;
@@ -38,10 +42,12 @@ public class App extends Application {
     private DatePicker startDatePicker = new DatePicker();
     private DatePicker endDatePicker = new DatePicker();
 
-    private ObservableList<Item> data = FXCollections.observableArrayList();
-    private HashMap<String, ArrayList<Integer>> compAndPosMap = new HashMap<>();
-    // 若合并过公司，则将它置为true
-    private boolean dataChanged = false;
+//    private ObservableList<Item> data = FXCollections.observableArrayList();
+//    private HashMap<String, ArrayList<Integer>> compAndPosMap = new HashMap<>();
+//    // 若合并过公司，则将它置为true
+//    private boolean dataChanged = false;
+
+    private Map<String, List<Item>> data = new HashMap<>();
 
     @Override
     public void start(Stage stage) {
@@ -104,22 +110,6 @@ public class App extends Application {
         endDatePicker.setValue(LocalDate.now());
         endDatePicker.getEditor().setFont(new Font(20));
 
-        Button showListButton = new Button("查看所有货物");
-        showListButton.setFont(new Font(20));
-        showListButton.setOnAction(arg0 -> {
-            try {
-                if (dataChanged) {
-                    if (showConfirmDialog("数据已经修改过，若重新导入数据，修改将作废，是否继续")) {
-                        importDataFromExcel();
-                    }
-                } else {
-                    importDataFromExcel();
-                }
-                countNameLabel.setText("货物总数:" + data.size());
-            } catch (Exception e) {
-                showErrorDialog("错误", "出现错误" + e.getMessage());
-            }
-        });
 
 //        Button editListButton = new Button("编辑列表");
 //        editListButton.setFont(new Font(20));
@@ -175,13 +165,14 @@ public class App extends Application {
 //            editStage.show();
 //        });
 
-        ListView<Item> listView = new ListView<>(data);
+        ListView<Item> listView = new ListView<>();
         listView.setPrefSize(900, 600);
         listView.setEditable(false);
         listView.setCellFactory(itemListView -> {
             return new ListCell<Item>() {
                 @Override
                 public void updateItem(Item item, boolean empty) {
+                    super.updateItem(item, empty);
                     HBox hBox = new HBox();
                     hBox.setSpacing(20);
                     hBox.setAlignment(Pos.CENTER_LEFT);
@@ -211,30 +202,43 @@ public class App extends Application {
             };
         });
 
+
+        Button showListButton = new Button("查看所有货物");
+        showListButton.setFont(new Font(20));
+        showListButton.setOnAction(arg0 -> {
+            try {
+                importDataFromExcel();
+                ObservableList<Item> tempList = generateTempList();
+                listView.setItems(tempList);
+                countNameLabel.setText("货物总数:" + tempList.size());
+            } catch (Exception e) {
+                showErrorDialog("错误", "出现错误" + e.getMessage());
+            }
+        });
+
         countNameLabel.setFont(new Font(20));
-        countNameLabel.setText("货物总数:" + data.size());
 
 
         Button addButton = new Button();
         addButton.setFont(new Font(20));
         addButton.setText("加入我的档案");
-        final ObservableList<Item> tempList = data;
+//        final ObservableList<Item> tempList = generateTempList(data);
         addButton.setOnAction(event -> {
-
-            ArrayList<Item> differenceInCompanies = null;
+            ObservableList<Item> tempList = generateTempList();
+            ArrayList<String> differenceInCompanies = null;
             try {
-                differenceInCompanies = ExcelUtil.getDifferenceInCompanies(myReportPath.toString(), tempList);
-
-                if(differenceInCompanies.size() == 0){
+                differenceInCompanies = ExcelUtil.getDifferenceInCompanies(myReportPath.toString(), data.keySet());
+                System.out.println(differenceInCompanies.size());
+                if (differenceInCompanies.size() != 0) {
                     showMergeCompanyWindow(differenceInCompanies);
+                } else {
+                    persistData(tempList);
                 }
 
             } catch (IOException | GeneralSecurityException e) {
                 showErrorDialog("打开报表失败", "打开报表失败，请尝试重新打开报表");
             }
 
-
-            persistData(tempList);
         });
 
         GridPane gridPane = new GridPane();
@@ -280,16 +284,107 @@ public class App extends Application {
         stage.show();
     }
 
-    private void showMergeCompanyWindow(ArrayList<Item> differenceInCompanies) throws IOException, GeneralSecurityException {
-        List<String> targetCompanyList = ExcelUtil.getCompanyList(myReportPath.toString());
-
-
+    private ObservableList<Item> generateTempList() {
+        ObservableList list = FXCollections.observableArrayList();
+        for (Map.Entry<String, List<Item>> e :
+                data.entrySet()) {
+            list.addAll(e.getValue());
+        }
+        return list;
     }
+
+    private void showMergeCompanyWindow(ArrayList<String> differenceInCompanies) throws IOException, GeneralSecurityException {
+        ObservableList<String> targetCompanyList = FXCollections.observableList(ExcelUtil.getCompanyList(myReportPath.toString()));
+        System.out.println(targetCompanyList.size());
+        System.out.println(differenceInCompanies.size());
+        VBox vBox = new VBox();
+        vBox.setAlignment(Pos.CENTER_LEFT);
+
+
+        ListView<String> diffListView = new ListView<>(FXCollections.observableList(differenceInCompanies));
+        diffListView.setPrefSize(900, 600);
+        diffListView.setEditable(false);
+        diffListView.setCellFactory(new Callback<ListView<String>, ListCell<String>>() {
+            @Override
+            public ListCell<String> call(ListView<String> stringListView) {
+                ListCell<String> cell = new ListCell<>(){
+                    @Override
+                    protected void updateItem(String item, boolean empty) {
+                        super.updateItem(item, empty);
+                        HBox hBox = new HBox();
+                        hBox.setSpacing(20);
+                        hBox.setAlignment(Pos.CENTER_LEFT);
+                        if (!empty) {
+
+                            Label companyLabel = new Label(item);
+                            companyLabel.setFont(new Font(20));
+                            companyLabel.setPrefWidth(300);
+
+                            ComboBox<String> afterCombo = new ComboBox<>(targetCompanyList);
+                            afterCombo.setCellFactory(stringListView -> {
+                                ListCell<String> cell = new ListCell<>() {
+                                    @Override
+                                    protected void updateItem(String s, boolean b) {
+                                        super.updateItem(s, b);
+                                        setText(s);
+                                        setEditable(false);
+                                    }
+                                };
+                                cell.setFont(new Font(20));
+                                return cell;
+                            });
+
+
+                            hBox.getChildren().addAll(companyLabel, afterCombo);
+                            setGraphic(hBox);
+                        }
+
+                    }
+                };
+                cell.setFont(new Font(20));
+
+                return cell;
+            }
+        });
+
+//        diffListView.setCellFactory(itemListView -> new ListCell<>() {
+//
+//            @Override
+//            public void updateItem(String item, boolean empty) {
+//                HBox hBox = new HBox();
+//                hBox.setSpacing(20);
+//                if (!empty) {
+//                    Label companyLabel = new Label(item);
+//                    companyLabel.setFont(new Font(20));
+//                    companyLabel.setPrefWidth(300);
+//                    hBox.getChildren().addAll(companyLabel);
+//                    setGraphic(hBox);
+//                }
+//            }
+//
+//            @Override
+//            public void updateSelected(boolean selected) {
+//                super.updateSelected(selected);
+//
+//            }
+//        });
+
+        Button confirmButton = new Button("确定");
+        confirmButton.setFont(new Font(20));
+
+        vBox.getChildren().add(0, diffListView);
+//        vBox.getChildren().add(1,afterCombo);
+        vBox.getChildren().add(1, confirmButton);
+
+        Stage editStage = new Stage();
+        editStage.setScene(new Scene(vBox, 900, 600));
+        editStage.show();
+    }
+
 
     private void persistData(ObservableList<Item> todayReportList) {
         try {
             ExcelUtil.backupFile(myReportPath.toString());
-
             ExcelUtil.persistDataToExcel(myReportPath.toString(), todayReportList);
             showSuccessDialog("写入成功", "写入成功，备份文件未删除");
         } catch (IOException e) {
@@ -306,21 +401,16 @@ public class App extends Application {
         return result.isPresent() && result.get() == ButtonType.OK;
     }
 
-//    private boolean showMergeCompany(String beforeComp, String afterComp, ObservableList<String> comp) {
-//        if (beforeComp == null || afterComp == null) {
-//            return false;
-//        }
-//        ArrayList<Integer> posList = compAndPosMap.get(beforeComp);
-//        for (int pos : posList) {
-//            data.get(pos).setCompany(afterComp);
-//        }
-//        compAndPosMap.remove(beforeComp);
-//        dataChanged = true;
-//        data.add(data.size(), new Item());
-//        data.remove(data.size() - 1);
-//        comp.remove(beforeComp);
-//        return true;
-//    }
+    private void mergeCompany(String beforeComp, String afterComp, ObservableList<String> comp) {
+        List<Item> before = data.get(beforeComp);
+        List<Item> after = data.get(afterComp);
+        if (after == null) {
+            data.put(afterComp, before);
+        } else {
+            after.addAll(before);
+        }
+        data.remove(beforeComp);
+    }
 
     private void showErrorDialog(String header, String content) {
         Alert alert = new Alert(Alert.AlertType.WARNING);
@@ -341,21 +431,27 @@ public class App extends Application {
     }
 
     private void importDataFromExcel() throws IOException, GeneralSecurityException {
-        data.removeIf(item -> true);
-        data.addAll(
-                ExcelUtil.getReportContent(todayReportPath.toString(),
-                        getDateFromLocalDate(startDatePicker.getValue().minusDays(1)),
-                        getDateFromLocalDate(endDatePicker.getValue().plusDays(1))
-                )
+        data.clear();
+        data = ExcelUtil.getReportContentMap(todayReportPath.toString(),
+                getDateFromLocalDate(startDatePicker.getValue().minusDays(1)),
+                getDateFromLocalDate(endDatePicker.getValue().plusDays(1))
         );
 
-        // 记录所有公司名和相应记录位置
-        for (int i = data.size() - 1; i >= 0; i--) {
-            ArrayList<Integer> integers = compAndPosMap.computeIfAbsent(data.get(i).getCompany(), k -> new ArrayList<>());
-            integers.add(i);
-        }
-
-        dataChanged = false;
+//        data.removeIf(item -> true);
+//        data.addAll(
+//                ExcelUtil.getReportContent(todayReportPath.toString(),
+//                        getDateFromLocalDate(startDatePicker.getValue().minusDays(1)),
+//                        getDateFromLocalDate(endDatePicker.getValue().plusDays(1))
+//                )
+//        );
+//
+//        // 记录所有公司名和相应记录位置
+//        for (int i = data.size() - 1; i >= 0; i--) {
+//            ArrayList<Integer> integers = compAndPosMap.computeIfAbsent(data.get(i).getCompany(), k -> new ArrayList<>());
+//            integers.add(i);
+//        }
+//
+//        dataChanged = false;
     }
 
     private void changeReportPath(String absolutePath) {

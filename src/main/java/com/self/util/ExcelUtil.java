@@ -53,12 +53,12 @@ public class ExcelUtil {
      * @param items
      * @throws IOException
      */
-    public static ArrayList<Item> getDifferenceInCompanies(String path, ObservableList<Item> items) throws IOException {
+    public static ArrayList<String> getDifferenceInCompanies(String path, Set<String> items) throws IOException {
         try (Workbook workBook = getWorkBook(path)) {
-            ArrayList<Item> diff = new ArrayList<>();
-            for (Item item : items) {
-                if (item.getCompany() != null && !item.getCompany().trim().equals("")) {
-                    Sheet sheetAt = workBook.getSheet(item.getCompany());
+            ArrayList<String> diff = new ArrayList<>();
+            for (String item : items) {
+                if (item != null && !item.trim().equals("")) {
+                    Sheet sheetAt = workBook.getSheet(item);
 
                     if (sheetAt == null) {
                         diff.add(item);
@@ -141,6 +141,23 @@ public class ExcelUtil {
     }
 
     /**
+     * get report content
+     * can be used for both xls and xlsx file
+     *
+     * @param path absolute path of the excel file
+     * @return a list contains all content
+     */
+    public static Map<String, List<Item>> getReportContentMap(String path, Date start, Date end) throws IOException, GeneralSecurityException {
+        Map<String, List<Item>> map = new HashMap<>();
+        try (Workbook workBook = getWorkBook(path)) {
+
+            readSheet(workBook.getSheetAt(0), map, start, end);
+
+            return map;
+        }
+    }
+
+    /**
      * open xls/xlsx file without password
      *
      * @param path excel file path
@@ -215,6 +232,36 @@ public class ExcelUtil {
         }
 
     }
+
+    private static void readSheet(Sheet sheet, Map<String, List<Item>> map, Date start, Date end) {
+        int rowCount = sheet.getLastRowNum();
+        for (int i = 1; i < rowCount; i++) {
+            Row row = sheet.getRow(i);
+            if (row.getCell(0) != null && "小计".equals(row.getCell(0).getStringCellValue())) {
+                return;
+            }
+
+            if (!"工业园辅助材料库".equals(row.getCell(1).getStringCellValue())) {
+                String company = row.getCell(7).getStringCellValue();
+                Date d = row.getCell(2).getDateCellValue();
+                if (d.after(start) && d.before(end)) {
+                    Item item = new Item(
+                            row.getCell(13).getStringCellValue(),
+                            row.getCell(14) == null ? null : row.getCell(14).getStringCellValue(),
+                            row.getCell(16).getNumericCellValue(),
+                            company,
+                            d);
+
+                    if(!map.containsKey(company)){
+                        map.put(company, new ArrayList<>(10));
+                    }
+                    map.get(company).add(item);
+                }
+            }
+        }
+
+    }
+
 
     public static String backupFile(String path) throws IOException {
         int suf = path.lastIndexOf(".");
