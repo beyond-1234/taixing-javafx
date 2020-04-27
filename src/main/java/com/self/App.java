@@ -30,7 +30,6 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.*;
-import java.util.function.Consumer;
 
 /**
  * JavaFX App
@@ -170,7 +169,7 @@ public class App extends Application {
 //        });
 
         listView = new ListView<>();
-        listView.setPrefSize(900, 600);
+        listView.setPrefSize(900, 400);
         listView.setEditable(false);
         listView.setCellFactory(itemListView -> {
             return new ListCell<Item>() {
@@ -235,7 +234,7 @@ public class App extends Application {
                 if (differenceInCompanies.size() != 0) {
                     showMergeCompanyWindow(differenceInCompanies);
                 } else {
-                    persistData();
+                    persistDataWithConfirm();
                 }
 
             } catch (IOException | GeneralSecurityException e) {
@@ -279,7 +278,7 @@ public class App extends Application {
         Scene scene = new Scene(group);
         stage.setScene(scene);
         stage.setMinWidth(900);
-        stage.setMinHeight(900);
+        stage.setMinHeight(700);
 
         // 退出时关闭所有窗口
         stage.setOnCloseRequest(event -> Platform.exit());
@@ -392,7 +391,7 @@ public class App extends Application {
                 // 更新主界面上的数据
                 listView.setItems(generateTempListFromMap());
                 // 将数据添加到excel
-                persistData();
+                persistDataWithConfirm();
                 editStage.close();
             }
         });
@@ -402,6 +401,13 @@ public class App extends Application {
 
         editStage.setScene(new Scene(vBox, 900, 600));
         editStage.show();
+    }
+
+    private void persistDataWithConfirm(){
+        boolean b = showConfirmDialog("确定吗？");
+        if(b){
+            persistData();
+        }
     }
 
 
